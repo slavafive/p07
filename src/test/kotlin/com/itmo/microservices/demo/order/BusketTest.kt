@@ -1,5 +1,8 @@
 package com.itmo.microservices.demo.order
 
+import com.google.common.eventbus.EventBus
+import com.itmo.microservices.commonlib.annotations.InjectEventLogger
+import com.itmo.microservices.commonlib.logging.EventLogger
 import com.itmo.microservices.demo.order.api.model.BusketModel
 import com.itmo.microservices.demo.order.api.model.ProductType
 import com.itmo.microservices.demo.order.impl.entity.Busket
@@ -7,7 +10,7 @@ import com.itmo.microservices.demo.order.impl.entity.OrderProduct
 import com.itmo.microservices.demo.order.impl.repository.BusketRepository
 import com.itmo.microservices.demo.order.impl.repository.OrderProductRepository
 import com.itmo.microservices.demo.order.impl.util.toModel
-import com.itmo.microservices.demo.tasks.impl.service.BusketServiceImpl
+import com.itmo.microservices.demo.order.impl.service.BusketServiceImpl
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.mockito.*
@@ -18,6 +21,7 @@ import java.util.*
 class BusketTest {
     private val productRepo = Mockito.mock(OrderProductRepository::class.java)
     private val busketRepo = Mockito.mock(BusketRepository::class.java)
+    private val service = BusketServiceImpl(productRepo, busketRepo, EventBus())
 
     private val productId = UUID.randomUUID()
     private fun productMock(): OrderProduct {
@@ -41,7 +45,6 @@ class BusketTest {
 
     @Test
     fun allBusketsTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         Mockito.`when`(busketRepo.findAll()).thenReturn(mutableListOf(busketMock()))
 
         val actual = service.allBuskets()
@@ -51,7 +54,6 @@ class BusketTest {
 
     @Test
     fun createBusketTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         val user = Mockito.mock(UserDetails::class.java)
         Mockito.`when`(user.username).thenReturn("Govnoslav")
         Mockito.`when`(productRepo.findById(Mockito.any())).thenReturn(Optional.of(productMock()))
@@ -64,7 +66,6 @@ class BusketTest {
 
     @Test
     fun getBusketByIdTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         Mockito.`when`(busketRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(busketMock()))
         val actual = service.getBusketById(busketId)
         val expected = busketMock().toModel()
@@ -73,7 +74,6 @@ class BusketTest {
 
     @Test
     fun deleteBusketByIdTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         Mockito.`when`(busketRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(busketMock()))
         val actual = service.deleteBusketById(busketId)
         val expected = busketMock().toModel()
@@ -82,7 +82,6 @@ class BusketTest {
 
     @Test
     fun addProductToBusketTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         Mockito.`when`(productRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(productMock()))
         Mockito.`when`(busketRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(busketMock().also { it.products = mutableListOf() }))
         val actual = service.addProductToBusket(busketId, productId)
@@ -92,7 +91,6 @@ class BusketTest {
 
     @Test
     fun deleteProductFromBusketTest() {
-        val service = BusketServiceImpl(productRepo, busketRepo)
         Mockito.`when`(productRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(productMock()))
         Mockito.`when`(busketRepo.findById(Mockito.any())).thenReturn(Optional.ofNullable(busketMock()))
 
