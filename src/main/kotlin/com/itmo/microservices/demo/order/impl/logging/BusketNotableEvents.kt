@@ -1,7 +1,7 @@
 package com.itmo.microservices.demo.order.impl.logging
 
 import com.itmo.microservices.commonlib.logging.NotableEvent
-import com.itmo.microservices.demo.order.api.model.BusketModel
+import com.itmo.microservices.demo.order.api.model.BusketDto
 import org.springframework.security.core.userdetails.UserDetails
 import java.util.*
 

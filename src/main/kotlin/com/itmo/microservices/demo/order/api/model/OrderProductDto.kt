@@ -1,4 +1,4 @@
-package com.itmo.microservices.demo.order.impl.entity
+package com.itmo.microservices.demo.order.api.model
 
 import com.itmo.microservices.demo.order.api.model.ProductType
 import java.util.*
@@ -6,8 +6,12 @@ import javax.persistence.Entity
 import javax.persistence.GeneratedValue
 import javax.persistence.Id
 
+enum class ProductType {
+    OTHER, CLOTHES
+}
+
 @Entity
-public class OrderProduct {
+public class OrderProductDto {
     @Id
     @GeneratedValue
     var id: UUID? = null
