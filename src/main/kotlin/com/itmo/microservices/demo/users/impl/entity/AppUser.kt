@@ -9,7 +9,7 @@ import javax.persistence.Id
 @Entity
 class AppUser {
     @Id
-    var id:UUID? = UUID.randomUUID()
+    var id:UUID = UUID.randomUUID()
     var name: String? = null
     var password: String? = null
 
