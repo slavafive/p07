@@ -5,7 +5,6 @@ import com.itmo.microservices.commonlib.annotations.InjectEventLogger
 import com.itmo.microservices.commonlib.logging.EventLogger
 import com.itmo.microservices.demo.common.exception.NotFoundException
 import com.itmo.microservices.demo.users.api.messaging.UserCreatedEvent
-import com.itmo.microservices.demo.users.api.messaging.UserDeletedEvent
 import com.itmo.microservices.demo.users.api.service.UserService
 import com.itmo.microservices.demo.users.impl.entity.AppUser
 import com.itmo.microservices.demo.users.api.model.AppUserModel
@@ -13,7 +12,6 @@ import com.itmo.microservices.demo.users.api.model.RegistrationRequest
 import com.itmo.microservices.demo.users.impl.logging.UserServiceNotableEvents
 import com.itmo.microservices.demo.users.impl.repository.UserRepository
 import com.itmo.microservices.demo.users.impl.util.toModel
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -35,14 +33,16 @@ class DefaultUserService(private val userRepository: UserRepository,
     override fun registerUser(request: RegistrationRequest): AppUserModel {
         //There is no prevention of duplicate user registrations
         val userEntity = userRepository.save(request.toEntity())
+        if(::eventLogger.isInitialized) {
+            eventLogger.info(UserServiceNotableEvents.I_USER_CREATED, userEntity.name)
+        }
         eventBus.post(UserCreatedEvent(userEntity.toModel()))
-        eventLogger.info(UserServiceNotableEvents.I_USER_CREATED, userEntity.name)
         return userEntity.toModel()
     }
 
-    override fun getAccountData(requester: UserDetails,uuid: UUID): AppUserModel =
+    override fun getAccountData(requester: UserDetails?, uuid: UUID): AppUserModel =
             userRepository.findById(uuid)?.toModel() ?:
-            throw NotFoundException("User ${requester.username} not found")
+            throw NotFoundException("User ${requester?.username} not found")
 
     fun RegistrationRequest.toEntity(): AppUser =
         AppUser(
