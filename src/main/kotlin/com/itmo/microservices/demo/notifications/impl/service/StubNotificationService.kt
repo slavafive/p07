@@ -58,14 +58,14 @@ class CallExternalSystemForNotification {
     companion object {
         val log: Logger = LoggerFactory.getLogger(CallExternalSystemForNotification::class.java)
     }
-    private val token = mapOf("clientSecret" to "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    private val token = mapOf("clientSecret" to "7d65037f-e9af-433e-8e3f-a3da77e019b1")
     private val objectMapper = ObjectMapper()
     private val requestBody: String = objectMapper.writeValueAsString(token)
     @OptIn(ExperimentalTime::class)
 
     private fun getPostHeaders(body:String): HttpRequest {
         return HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/transactions"))
+            .uri(URI.create("http://77.234.215.138:30027/transactions"))
             .timeout(Duration.seconds(60).toJavaDuration())
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
