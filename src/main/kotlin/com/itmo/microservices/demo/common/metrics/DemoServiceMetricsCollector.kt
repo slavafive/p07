@@ -3,8 +3,6 @@ package com.itmo.microservices.demo.common.metrics
 import com.itmo.microservices.commonlib.metrics.CommonMetricsCollector
 import io.micrometer.core.instrument.*
 import org.springframework.beans.factory.annotation.Autowired
-import io.micrometer.core.instrument.Counter
-import io.micrometer.core.instrument.MeterRegistry
 import io.prometheus.client.Histogram
 import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicInteger
@@ -119,13 +117,13 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
         //Количество денег, возвращенных пользователю
         refundedMoneyAmountDeliveryFailedCounter = meterRegistry.counter("refunded_money_amount", listOf(Tag.of("refundReason", "DELIVERY_FAILED")))
 
-        ordersInStatusCollecting = meterRegistry.gauge("orders_in_status_collecting", AtomicInteger())!!
-        ordersInStatusDiscard = meterRegistry.gauge("orders_in_status_discard", AtomicInteger())!!
-        ordersInStatusBooked = meterRegistry.gauge("orders_in_status_booked", AtomicInteger())!!
-        ordersInStatusPaid = meterRegistry.gauge("orders_in_status_paid", AtomicInteger())!!
-        ordersInStatusShipping = meterRegistry.gauge("orders_in_status_shipping", AtomicInteger())!!
-        ordersInStatusRefund = meterRegistry.gauge("orders_in_status_refund", AtomicInteger())!!
-        ordersInStatusCompleted = meterRegistry.gauge("orders_in_status_completed", AtomicInteger())!!
+        ordersInStatusCollecting = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "collecting")), AtomicInteger())!!
+        ordersInStatusDiscard = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "discard")), AtomicInteger())!!
+        ordersInStatusBooked = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "booked")), AtomicInteger())!!
+        ordersInStatusPaid = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "paid")), AtomicInteger())!!
+        ordersInStatusShipping = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "shipping")), AtomicInteger())!!
+        ordersInStatusRefund = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "refund")), AtomicInteger())!!
+        ordersInStatusCompleted = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "completed")), AtomicInteger())!!
     }
 
     companion object {

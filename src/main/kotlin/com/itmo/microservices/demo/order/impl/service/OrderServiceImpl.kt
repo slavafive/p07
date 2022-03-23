@@ -192,7 +192,7 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
     }
 
     @Scheduled(fixedRate = 10000)
-    fun checlOrdersStatus() {
+    fun checkOrdersStatus() {
         val orders = orderRepository.findAll();
 
         var collectingCount = 0
@@ -204,26 +204,14 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
         var completedCount = 0
 
         for (order in orders) {
-            if (order.status == OrderStatus.COLLECTING) {
-                collectingCount++
-            }
-            if (order.status == OrderStatus.DISCARD) {
-                discardCount++
-            }
-            if (order.status == OrderStatus.BOOKED) {
-                bookedCount++
-            }
-            if (order.status == OrderStatus.PAID) {
-                paidCount++
-            }
-            if (order.status == OrderStatus.SHIPPING) {
-                shippingCount++
-            }
-            if (order.status == OrderStatus.REFUND) {
-                refundCount++
-            }
-            if (order.status == OrderStatus.COMPLETED) {
-                completedCount++
+            when(order.status) {
+                OrderStatus.COLLECTING -> collectingCount++
+                OrderStatus.DISCARD -> discardCount++
+                OrderStatus.BOOKED -> bookedCount++
+                OrderStatus.PAID -> paidCount++
+                OrderStatus.SHIPPING -> shippingCount++
+                OrderStatus.REFUND -> refundCount++
+                OrderStatus.COMPLETED -> completedCount++
             }
         }
         metricsCollector.ordersInStatusCollecting.set(collectingCount)
