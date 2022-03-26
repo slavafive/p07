@@ -10,5 +10,4 @@ interface DeliveryService{
     fun getDeliveryHistoryById(transactionId:String):List<DeliveryInfoRecordModel>
     fun delivery(order:OrderDto)
     fun delivery(order:OrderDto,times:Int)
-    fun checkCountOfShippingOrders()
 }

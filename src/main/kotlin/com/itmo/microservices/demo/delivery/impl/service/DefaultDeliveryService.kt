@@ -69,7 +69,8 @@ class DefaultDeliveryService(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
     private val orderRepository: OrderRepository,
     private val eventBus: EventBus,
-    private val timer: Timer
+    private val timer: Timer,
+    private val productsRepository: ProductsRepository
 ) : DeliveryService {
 
     @Autowired
@@ -116,7 +117,7 @@ class DefaultDeliveryService(
     }
 
     override fun getDeliveryHistoryById(transactionId: String):List<DeliveryInfoRecordModel> {
-       val list =  deliveryInfoRecordRepository.getAllByTransactionId(UUID.fromString(transactionId))
+        val list =  deliveryInfoRecordRepository.getAllByTransactionId(UUID.fromString(transactionId))
         var mList = mutableListOf<DeliveryInfoRecordModel>()
         for(e in list){
             mList.add(e.toModel())
@@ -126,15 +127,36 @@ class DefaultDeliveryService(
 
 
     override fun delivery(order: OrderDto) {
+        metricsCollector.shippingOrdersTotalCounter.increment()
         delivery(order, 1)
     }
 
+    fun countRefundMoneyAmount(order: OrderDto): Double {
+        var refund = 0.0
+        order.itemsMap?.forEach { (productId, count) ->
+            val product = productsRepository.findById(productId)
+            refund += product.get().price?.times(count) ?: 0
+        }
+        return refund
+    }
+
     override fun delivery(order: OrderDto, times: Int) {
-        metricsCollector.shippingOrdersTotalCounter.increment()
+        metricsCollector.currentShippingOrdersGauge.incrementAndGet() // when success or fail , dec 1
         if (order.deliveryDuration!! < this.timer.get_time()) {
-            log.info("order.deliveryDuration "+order.deliveryDuration)
-            log.info("this.timer.get_time() "+this.timer.get_time())
-            log.info("a delivery EXPIRED")
+            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+order.deliveryDuration)
+            if(times == 1){
+                //never used external system
+                //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
+                metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
+            }
+            metricsCollector.expiredDeliveryOrder.increment()
+
+            //?
+            metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
+
+            val refundMoneyAmount = countRefundMoneyAmount(order)
+            metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
+
             val timeStamp = System.currentTimeMillis()
             deliveryInfoRecordRepository.save(
                 DeliveryInfoRecord(
@@ -155,25 +177,18 @@ class DefaultDeliveryService(
                 if (response.statusCode() == 200) {
                     log.info("delivery processing , maybe fail")
                     Thread.sleep(120000)
-                    metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)
                     pollingForResult?.getDeliveryResult(order, responseJson, 1)
                 } else {
                     Thread.sleep(3000)
-                    delivery(order)
+                    delivery(order,times+1)
                 }
             } catch (e: HttpConnectTimeoutException) {
                 log.info("Request timeout!")
-                delivery(order)
+                delivery(order,times+1)
                 return
             }
             order.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
         }
-    }
-
-    @Scheduled(fixedRate = 10000)
-    override fun checkCountOfShippingOrders() {
-        val shippingOrdersCount = orderRepository.findAll().filter { it.status == OrderStatus.SHIPPING }.count()
-        metricsCollector.currentShippingOrdersGauge.set(shippingOrdersCount)
     }
 }
 
@@ -222,7 +237,6 @@ class PollingForResult(
         }
         schedulePool.schedule(
             {
-                log.info("getting status from external system")
                 val response_poll = httpClient.send(
                     getGetHeaders(responseJson_post.getString("id")),
                     HttpResponse.BodyHandlers.ofString()
@@ -231,6 +245,7 @@ class PollingForResult(
                 log.info("getting response from 3th system")
                 if (responseJson_poll.getString("status") == "SUCCESS") {
                     log.info("delivery success")
+                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
                             DeliverySubmissionOutcome.SUCCESS,
@@ -243,6 +258,7 @@ class PollingForResult(
                     )
                 } else {
                     log.info("delivery fail")
+                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
                             DeliverySubmissionOutcome.FAILURE,

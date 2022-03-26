@@ -48,6 +48,8 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
     lateinit var externalSystemExpenseNotificationCounter: Counter
     lateinit var refundedMoneyAmountDeliveryFailedCounter: Counter
 
+    lateinit var refunedDueToWrongTimePredictionOrder: Counter
+    lateinit var expiredDeliveryOrder: Counter
 
     @Autowired
     fun setMetrics(meterRegistry: MeterRegistry) {
@@ -107,9 +109,11 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
         revenueCounter = meterRegistry.counter("revenue")
         //Количество денег, которые были потрачены при обращении во внешние системы
         externalSystemExpensePaymentCounter = meterRegistry.counter("external_system_expense", listOf(Tag.of("externalSystemType", "PAYMENT")))
-        externalSystemExpenseDeliveryCounter = meterRegistry.counter("external_system_expense", listOf(Tag.of("externalSystemType", "DELIVERY")))
+        externalSystemExpenseDeliveryCounter = meterRegistry.counter("external_system_expense", listOf(Tag.of("externalSystemType", "DELIVERY")))//diff with refundedMoneyAmountDeliveryFailedCounter ?
         externalSystemExpenseNotificationCounter = meterRegistry.counter("external_system_expense", listOf(Tag.of("externalSystemType", "NOTIFICATION")))
 
+        expiredDeliveryOrder = meterRegistry.counter("expired_delivery_order", listOf(Tag.of("serviceName","p07")))
+        refunedDueToWrongTimePredictionOrder = meterRegistry.counter("refuned_due_to_wrong_time_prediction_order", listOf(Tag.of("serviceName","p07")))
         //Количество денег, возвращенных пользователю
         refundedMoneyAmountDeliveryFailedCounter = meterRegistry.counter("refunded_money_amount", listOf(Tag.of("refundReason", "DELIVERY_FAILED")))
     }
