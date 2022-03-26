@@ -191,6 +191,38 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
         metricsCollector.currentAbandonedOrderNumGauge.set(refundCount)
     }
 
+    @Scheduled(fixedRate = 10000)
+    fun checkOrdersStatus() {
+        val orders = orderRepository.findAll();
+
+        var collectingCount = 0
+        var discardCount = 0
+        var bookedCount = 0
+        var paidCount = 0
+        var shippingCount = 0
+        var refundCount = 0
+        var completedCount = 0
+
+        for (order in orders) {
+            when(order.status) {
+                OrderStatus.COLLECTING -> collectingCount++
+                OrderStatus.DISCARD -> discardCount++
+                OrderStatus.BOOKED -> bookedCount++
+                OrderStatus.PAID -> paidCount++
+                OrderStatus.SHIPPING -> shippingCount++
+                OrderStatus.REFUND -> refundCount++
+                OrderStatus.COMPLETED -> completedCount++
+            }
+        }
+        metricsCollector.ordersInStatusCollecting.set(collectingCount)
+        metricsCollector.ordersInStatusDiscard.set(discardCount)
+        metricsCollector.ordersInStatusBooked.set(bookedCount)
+        metricsCollector.ordersInStatusPaid.set(paidCount)
+        metricsCollector.ordersInStatusShipping.set(shippingCount)
+        metricsCollector.ordersInStatusRefund.set(refundCount)
+        metricsCollector.ordersInStatusCompleted.set(completedCount)
+    }
+
     @Scheduled(fixedRate = 60000)
     fun checkForDelete() {
         val currentTime = Date().time
