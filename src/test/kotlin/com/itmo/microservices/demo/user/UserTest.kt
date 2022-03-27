@@ -15,26 +15,26 @@ import java.util.*
 
 
 class UserTest {
-    private val usersRepository = Mockito.mock(UserRepository::class.java)
-    private val eventBus = Mockito.mock(EventBus::class.java)
-    private val passwordEncoder = Mockito.mock(PasswordEncoder::class.java)
-    private val usersId = UUID.randomUUID()
-
-    var accessToken :String=""
-    var userId = UUID.randomUUID()
-    private val userName:String="test2"
-    private val password:String = "stringpwd"
-
-    private fun usersMock():AppUser{
-        return AppUser(userName,password).also { it.id = usersId }
-    }
-    @Test
-    fun getAccountDataTest() {
-        val usersService = DefaultUserService(usersRepository,passwordEncoder,eventBus)
-        Mockito.`when`(usersRepository.findById(usersId)).thenReturn(usersMock())
-        val actual = usersService.getAccountData(null, usersId)
-        val expected = usersMock().toModel()
-        Assertions.assertEquals(actual, expected)
-    }
+//    private val usersRepository = Mockito.mock(UserRepository::class.java)
+//    private val eventBus = Mockito.mock(EventBus::class.java)
+//    private val passwordEncoder = Mockito.mock(PasswordEncoder::class.java)
+//    private val usersId = UUID.randomUUID()
+//
+//    var accessToken :String=""
+//    var userId = UUID.randomUUID()
+//    private val userName:String="test2"
+//    private val password:String = "stringpwd"
+//
+//    private fun usersMock():AppUser{
+//        return AppUser(userName,password).also { it.id = usersId }
+//    }
+//    @Test
+//    fun getAccountDataTest() {
+//        val usersService = DefaultUserService(usersRepository,passwordEncoder,eventBus)
+//        Mockito.`when`(usersRepository.findById(usersId)).thenReturn(usersMock())
+//        val actual = usersService.getAccountData(null, usersId)
+//        val expected = usersMock().toModel()
+//        Assertions.assertEquals(actual, expected)
+//    }
 
 }

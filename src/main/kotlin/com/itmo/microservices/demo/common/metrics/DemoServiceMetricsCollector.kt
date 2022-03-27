@@ -3,8 +3,6 @@ package com.itmo.microservices.demo.common.metrics
 import com.itmo.microservices.commonlib.metrics.CommonMetricsCollector
 import io.micrometer.core.instrument.*
 import org.springframework.beans.factory.annotation.Autowired
-import io.micrometer.core.instrument.Counter
-import io.micrometer.core.instrument.MeterRegistry
 import io.prometheus.client.Histogram
 import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicInteger
@@ -38,7 +36,13 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
     lateinit var fromBookedToPaidStatusCounter: Counter
     lateinit var fromShippingToCompletedStatusCounter: Counter
 
-    lateinit var ordersInStatus: AtomicInteger
+    lateinit var ordersInStatusCollecting: AtomicInteger
+    lateinit var ordersInStatusBooked: AtomicInteger
+    lateinit var ordersInStatusCompleted: AtomicInteger
+    lateinit var ordersInStatusDiscard: AtomicInteger
+    lateinit var ordersInStatusPaid: AtomicInteger
+    lateinit var ordersInStatusRefund: AtomicInteger
+    lateinit var ordersInStatusShipping: AtomicInteger
     //lateinit var ordersInStatusHistogram: Histogram
 
     lateinit var averagedBookingToPayTime: Timer
@@ -50,6 +54,8 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
 
     lateinit var refunedDueToWrongTimePredictionOrder: Counter
     lateinit var expiredDeliveryOrder: Counter
+    lateinit var successDelivery: Counter
+    lateinit var failedDelivery: Counter
 
     @Autowired
     fun setMetrics(meterRegistry: MeterRegistry) {
@@ -116,6 +122,16 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
         refunedDueToWrongTimePredictionOrder = meterRegistry.counter("refuned_due_to_wrong_time_prediction_order", listOf(Tag.of("serviceName","p07")))
         //Количество денег, возвращенных пользователю
         refundedMoneyAmountDeliveryFailedCounter = meterRegistry.counter("refunded_money_amount", listOf(Tag.of("refundReason", "DELIVERY_FAILED")))
+        successDelivery = meterRegistry.counter("success_delivery_counter", listOf(Tag.of("serviceName","p07")))
+        failedDelivery = meterRegistry.counter("failed_delivery_counter", listOf(Tag.of("serviceName","p07")))
+
+        ordersInStatusCollecting = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "collecting")), AtomicInteger())!!
+        ordersInStatusDiscard = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "discard")), AtomicInteger())!!
+        ordersInStatusBooked = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "booked")), AtomicInteger())!!
+        ordersInStatusPaid = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "paid")), AtomicInteger())!!
+        ordersInStatusShipping = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "shipping")), AtomicInteger())!!
+        ordersInStatusRefund = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "refund")), AtomicInteger())!!
+        ordersInStatusCompleted = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "completed")), AtomicInteger())!!
     }
 
     companion object {
