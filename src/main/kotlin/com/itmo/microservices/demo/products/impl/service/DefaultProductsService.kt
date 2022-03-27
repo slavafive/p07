@@ -69,6 +69,11 @@ class DefaultProductsService(private val productsRepository: ProductsRepository,
         productsRepository.save(product)
         return true
     }
+
+    override fun deleteAllProducts() {
+        productsRepository.deleteAll()
+    }
+
     
     fun ProductRequest.toEntity():Product=
         Product(
