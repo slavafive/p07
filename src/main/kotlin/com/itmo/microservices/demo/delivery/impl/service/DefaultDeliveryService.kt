@@ -42,8 +42,8 @@ import javax.annotation.PostConstruct
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaDuration
-
-
+//val url ="http://77.234.215.138:30027"
+val url ="http://127.0.0.1:30027"
 @Service
 class Timer {
     //Virtual time
@@ -86,11 +86,13 @@ class DefaultDeliveryService(
     private val timeout = Duration.seconds(10).toJavaDuration()
     val httpClient: HttpClient = HttpClient.newBuilder().build()
 
+
     private fun getPostHeaders(body: String): HttpRequest {
         return HttpRequest.newBuilder()
-            .uri(URI.create("http://127.0.0.1:30027/transactions"))
+            .uri(URI.create("$url/transactions"))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
+            .timeout(java.time.Duration.ofSeconds(5))
             .build()
     }
 
@@ -182,10 +184,10 @@ class DefaultDeliveryService(
                 val responseJson = JSONObject(response.body())
                 if (response.statusCode() == 200) {
                     log.info("delivery processing , maybe fail")
-                    Thread.sleep(2000)
+                    Thread.sleep(1000)
                     pollingForResult?.getDeliveryResult(order, responseJson, 1)
                 } else {
-                    Thread.sleep(3000)
+                    Thread.sleep(1000)
                     delivery(order,times+1)
                 }
             } catch (e: HttpConnectTimeoutException) {
@@ -217,9 +219,10 @@ class PollingForResult(
 
     private fun getGetHeaders(id: String): HttpRequest {
         return HttpRequest.newBuilder()
-            .uri(URI.create("http://77.234.215.138:30027/transactions/$id"))
+            .uri(URI.create("$url/transactions/$id"))
             .timeout(this.timeout)
             .header("Content-Type", "application/json")
+            .timeout(java.time.Duration.ofSeconds(5))
             .build()
     }
 
