@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.eventbus.EventBus
 import com.itmo.microservices.commonlib.annotations.InjectEventLogger
 import com.itmo.microservices.commonlib.logging.EventLogger
+import com.itmo.microservices.demo.common.exception.NotFoundException
 import com.itmo.microservices.demo.common.metrics.DemoServiceMetricsCollector
 import com.itmo.microservices.demo.delivery.api.model.DeliveryInfoRecordModel
 import com.itmo.microservices.demo.delivery.api.service.DeliveryService
@@ -23,6 +24,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.configurationprocessor.json.JSONObject
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -126,10 +128,13 @@ class DefaultDeliveryService(
     }
 
 
-    override fun delivery(order: OrderDto) {
+    override fun delivery(orderDto: OrderDto) {
         log.info("a new delivery setted")
+        val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+        order.status = OrderStatus.SHIPPING
+        orderRepository.save(order)
         metricsCollector.shippingOrdersTotalCounter.increment()
-        delivery(order, 1)
+        delivery(orderDto, 1)
     }
 
     fun countRefundMoneyAmount(order: OrderDto): Double {
@@ -147,7 +152,6 @@ class DefaultDeliveryService(
             log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+order.deliveryDuration)
             if(times == 1){
                 //never used external system
-
                 //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
                 metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
             }
@@ -200,6 +204,7 @@ class PollingForResult(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
     private val timer: Timer,
     private val metricsCollector: DemoServiceMetricsCollector,
+    private val orderRepository: OrderRepository,
     private val productsRepository: ProductsRepository
 ) {
     private val postToken = mapOf("clientSecret" to "8ddfb4e8-7f83-4c33-b7ac-8504f7c99205")
@@ -233,7 +238,7 @@ class PollingForResult(
         return refund
     }
 
-    fun getDeliveryResult(order: OrderDto, responseJson_post: JSONObject, times: Int) {
+    fun getDeliveryResult(orderDto: OrderDto, responseJson_post: JSONObject, times: Int) {
         if (times > 3) {
             return
         }
@@ -247,7 +252,11 @@ class PollingForResult(
                 log.info("getting response from 3th system")
                 if (responseJson_poll.getString("status") == "SUCCESS") {
                     log.info("delivery success")
-                    metricsCollector.successDelivery.increment()
+
+                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                    order.status = OrderStatus.COMPLETED
+                    orderRepository.save(order)
+
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
@@ -255,25 +264,28 @@ class PollingForResult(
                             responseJson_poll.getLong("delta"),
                             times,
                             responseJson_poll.getLong("completedTime"),
-                            order.id!!,
+                            orderDto.id!!,
                             responseJson_poll.getLong("submitTime")
                         )
                     )
                 } else {
                     log.info("delivery fail")
-                    metricsCollector.failedDelivery.increment()
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
+                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                    order.status = OrderStatus.REFUND
+                    orderRepository.save(order)
+
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
                             DeliverySubmissionOutcome.FAILURE,
                             responseJson_poll.getLong("delta"),
                             times,
                             responseJson_poll.getLong("completedTime"),
-                            order.id!!,
+                            orderDto.id!!,
                             responseJson_poll.getLong("submitTime")
                         )
                     )
-                    val refundMoneyAmount = countRefundMoneyAmount(order)
+                    val refundMoneyAmount = countRefundMoneyAmount(orderDto)
                     metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
                 }
 
