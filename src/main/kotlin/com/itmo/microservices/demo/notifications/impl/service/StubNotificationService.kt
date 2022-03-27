@@ -2,26 +2,20 @@ package com.itmo.microservices.demo.notifications.impl.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.itmo.microservices.demo.notifications.api.service.NotificationService
-import com.itmo.microservices.demo.notifications.impl.entity.NotificationUser
 import com.itmo.microservices.demo.notifications.impl.repository.NotificationUserRepository
 import com.itmo.microservices.demo.payments.api.model.PaymentModel
-import com.itmo.microservices.demo.products.api.model.ProductModel
+import com.itmo.microservices.demo.products.api.model.CatalogItemDto
 import com.itmo.microservices.demo.users.api.model.AppUserModel
-import com.zaxxer.hikari.util.UtilityElf
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.configurationprocessor.json.JSONObject
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
-import java.lang.Exception
 import java.net.ConnectException
 import java.net.URI
 import java.net.http.*
 import java.util.concurrent.*
-import kotlin.concurrent.thread
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaDuration
@@ -54,7 +48,7 @@ class StubNotificationService(private val userRepository: NotificationUserReposi
         }
     }
 
-    override fun processAddProduct(product: ProductModel) {
+    override fun processAddProduct(product: CatalogItemDto) {
         // just for debugging
         log.info("Product 'ID:${product.id}  ${product.name}' ${product.price} added into database ")
     }
@@ -67,13 +61,12 @@ class SendEmailToUser(){
     private val objectMapper = ObjectMapper()
     private val postBody: String = objectMapper.writeValueAsString(postToken)
     @OptIn(ExperimentalTime::class)
-    private val timeout =Duration.seconds(10).toJavaDuration()
+    private val timeout = Duration.seconds(10).toJavaDuration()
     val httpClient: HttpClient = HttpClient.newBuilder().build()
 
     private fun getPostHeaders(body:String): HttpRequest {
         return HttpRequest.newBuilder()
-            .uri(URI.create("http://77.234.215.138:30027/transactions"))
-            .timeout(this.timeout)
+            .uri(URI.create("http://77.234.215.138:30027/transactions/"))
             .header("Content-Type","application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
@@ -88,7 +81,7 @@ class SendEmailToUser(){
     private var executorService: ExecutorService? = null
 
 
-    fun  sendEmailToUser(message:String) {
+    fun sendEmailToUser(message:String) {
         try{
             executorService?.submit(callExternalSystem(message))
         }catch(e:RejectedExecutionException){

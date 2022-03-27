@@ -4,18 +4,29 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.eventbus.EventBus
 import com.itmo.microservices.commonlib.annotations.InjectEventLogger
 import com.itmo.microservices.commonlib.logging.EventLogger
+import com.itmo.microservices.demo.common.exception.NotFoundException
+import com.itmo.microservices.demo.common.metrics.DemoServiceMetricsCollector
 import com.itmo.microservices.demo.delivery.api.model.DeliveryInfoRecordModel
 import com.itmo.microservices.demo.delivery.api.service.DeliveryService
 import com.itmo.microservices.demo.delivery.impl.entity.DeliveryInfoRecord
 import com.itmo.microservices.demo.delivery.impl.entity.DeliverySubmissionOutcome
+import com.itmo.microservices.demo.delivery.impl.event.OrderStatusChanged
 import com.itmo.microservices.demo.delivery.impl.repository.DeliveryInfoRecordRepository
 import com.itmo.microservices.demo.delivery.impl.utils.toModel
 import com.itmo.microservices.demo.notifications.impl.service.StubNotificationService
 import com.itmo.microservices.demo.order.api.model.OrderDto
+import com.itmo.microservices.demo.order.api.model.OrderStatus
+import com.itmo.microservices.demo.order.impl.entity.OrderEntity
+import com.itmo.microservices.demo.order.impl.repository.OrderRepository
+import com.itmo.microservices.demo.order.impl.util.toEntity
+import com.itmo.microservices.demo.products.impl.repository.ProductsRepository
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.configurationprocessor.json.JSONObject
+import org.springframework.data.repository.findByIdOrNull
+import org.springframework.scheduling.annotation.EnableScheduling
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.http.HttpClient
@@ -54,12 +65,18 @@ class Timer {
 
 
 @Suppress("UnstableApiUsage")
+@EnableScheduling
 @Service
 class DefaultDeliveryService(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
+    private val orderRepository: OrderRepository,
     private val eventBus: EventBus,
-    private val timer: Timer
+    private val timer: Timer,
+    private val productsRepository: ProductsRepository
 ) : DeliveryService {
+
+    @Autowired
+    private lateinit var metricsCollector: DemoServiceMetricsCollector
 
     private val postToken = mapOf("clientSecret" to "8ddfb4e8-7f83-4c33-b7ac-8504f7c99205")
     private val objectMapper = ObjectMapper()
@@ -72,7 +89,6 @@ class DefaultDeliveryService(
     private fun getPostHeaders(body: String): HttpRequest {
         return HttpRequest.newBuilder()
             .uri(URI.create("http://77.234.215.138:30027/transactions"))
-            .timeout(this.timeout)
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build()
@@ -91,8 +107,6 @@ class DefaultDeliveryService(
 
     var countOrdersWaitingForDeliver = AtomicInteger(0)
 
-
-
     override fun getSlots(number: Int): List<Int> {
         var list = mutableListOf<Int>()
         var startTime: Int = timer.get_time() + 30 + 3 * countOrdersWaitingForDeliver.get()
@@ -105,7 +119,7 @@ class DefaultDeliveryService(
     }
 
     override fun getDeliveryHistoryById(transactionId: String):List<DeliveryInfoRecordModel> {
-       val list =  deliveryInfoRecordRepository.getAllByTransactionId(UUID.fromString(transactionId))
+        val list =  deliveryInfoRecordRepository.getAllByTransactionId(UUID.fromString(transactionId))
         var mList = mutableListOf<DeliveryInfoRecordModel>()
         for(e in list){
             mList.add(e.toModel())
@@ -114,15 +128,41 @@ class DefaultDeliveryService(
     }
 
 
-    override fun delivery(order: OrderDto) {
-        delivery(order, 1)
+    override fun delivery(orderDto: OrderDto) {
+        log.info("a new delivery setted")
+        val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+        order.status = OrderStatus.SHIPPING
+        orderRepository.save(order)
+        metricsCollector.shippingOrdersTotalCounter.increment()
+        delivery(orderDto, 1)
+    }
+
+    fun countRefundMoneyAmount(order: OrderDto): Double {
+        var refund = 0.0
+        order.itemsMap?.forEach { (productId, count) ->
+            val product = productsRepository.findById(productId)
+            refund += product.get().price?.times(count) ?: 0
+        }
+        return refund
     }
 
     override fun delivery(order: OrderDto, times: Int) {
+        metricsCollector.currentShippingOrdersGauge.incrementAndGet() // when success or fail , dec 1
         if (order.deliveryDuration!! < this.timer.get_time()) {
-            log.info("order.deliveryDuration "+order.deliveryDuration)
-            log.info("this.timer.get_time() "+this.timer.get_time())
-            log.info("a delivery EXPIRED")
+            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+order.deliveryDuration)
+            if(times == 1){
+                //never used external system
+                //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
+                metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
+            }
+            metricsCollector.expiredDeliveryOrder.increment()
+
+            //?
+            metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
+
+            val refundMoneyAmount = countRefundMoneyAmount(order)
+            metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
+
             val timeStamp = System.currentTimeMillis()
             deliveryInfoRecordRepository.save(
                 DeliveryInfoRecord(
@@ -136,22 +176,24 @@ class DefaultDeliveryService(
             )
         } else {
             try {
+                order.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.SHIPPING)) }
                 log.info("send delivery requesting")
                 val response = httpClient.send(getPostHeaders(postBody), HttpResponse.BodyHandlers.ofString())
                 val responseJson = JSONObject(response.body())
                 if (response.statusCode() == 200) {
-                    val id = responseJson.getString("id")
                     log.info("delivery processing , maybe fail")
+                    Thread.sleep(2000)
                     pollingForResult?.getDeliveryResult(order, responseJson, 1)
-
                 } else {
                     Thread.sleep(3000)
-                    delivery(order)
+                    delivery(order,times+1)
                 }
             } catch (e: HttpConnectTimeoutException) {
                 log.info("Request timeout!")
-                delivery(order)
+                delivery(order,times+1)
+                return
             }
+            order.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
         }
     }
 }
@@ -160,7 +202,10 @@ class DefaultDeliveryService(
 @Service
 class PollingForResult(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
-    private val timer: Timer
+    private val timer: Timer,
+    private val metricsCollector: DemoServiceMetricsCollector,
+    private val orderRepository: OrderRepository,
+    private val productsRepository: ProductsRepository
 ) {
     private val postToken = mapOf("clientSecret" to "8ddfb4e8-7f83-4c33-b7ac-8504f7c99205")
     private val objectMapper = ObjectMapper()
@@ -184,13 +229,21 @@ class PollingForResult(
 
     var schedulePool: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
 
-    fun getDeliveryResult(order: OrderDto, responseJson_post: JSONObject, times: Int) {
+    fun countRefundMoneyAmount(order: OrderDto): Double {
+        var refund = 0.0
+        order.itemsMap?.forEach { (productId, count) ->
+            val product = productsRepository.findById(productId)
+            refund += product.get().price?.times(count) ?: 0
+        }
+        return refund
+    }
+
+    fun getDeliveryResult(orderDto: OrderDto, responseJson_post: JSONObject, times: Int) {
         if (times > 3) {
             return
         }
         schedulePool.schedule(
             {
-                log.info("getting status from external system")
                 val response_poll = httpClient.send(
                     getGetHeaders(responseJson_post.getString("id")),
                     HttpResponse.BodyHandlers.ofString()
@@ -199,28 +252,43 @@ class PollingForResult(
                 log.info("getting response from 3th system")
                 if (responseJson_poll.getString("status") == "SUCCESS") {
                     log.info("delivery success")
+                    metricsCollector.successDelivery.increment()
+                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                    order.status = OrderStatus.COMPLETED
+                    orderRepository.save(order)
+
+                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
                             DeliverySubmissionOutcome.SUCCESS,
                             responseJson_poll.getLong("delta"),
                             times,
                             responseJson_poll.getLong("completedTime"),
-                            order.id!!,
+                            orderDto.id!!,
                             responseJson_poll.getLong("submitTime")
                         )
                     )
                 } else {
                     log.info("delivery fail")
+                    metricsCollector.failedDelivery.increment()
+
+                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
+                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                    order.status = OrderStatus.REFUND
+                    orderRepository.save(order)
+
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
                             DeliverySubmissionOutcome.FAILURE,
                             responseJson_poll.getLong("delta"),
                             times,
                             responseJson_poll.getLong("completedTime"),
-                            order.id!!,
+                            orderDto.id!!,
                             responseJson_poll.getLong("submitTime")
                         )
                     )
+                    val refundMoneyAmount = countRefundMoneyAmount(orderDto)
+                    metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
                 }
 
             }, (10).toLong(), TimeUnit.SECONDS
