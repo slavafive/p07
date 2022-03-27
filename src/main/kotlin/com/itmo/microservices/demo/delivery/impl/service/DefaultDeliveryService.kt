@@ -147,6 +147,7 @@ class DefaultDeliveryService(
             log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+order.deliveryDuration)
             if(times == 1){
                 //never used external system
+
                 //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
                 metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
             }
@@ -246,6 +247,7 @@ class PollingForResult(
                 log.info("getting response from 3th system")
                 if (responseJson_poll.getString("status") == "SUCCESS") {
                     log.info("delivery success")
+                    metricsCollector.successDelivery.increment()
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(
@@ -259,6 +261,7 @@ class PollingForResult(
                     )
                 } else {
                     log.info("delivery fail")
+                    metricsCollector.failedDelivery.increment()
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     deliveryInfoRecordRepository.save(
                         DeliveryInfoRecord(

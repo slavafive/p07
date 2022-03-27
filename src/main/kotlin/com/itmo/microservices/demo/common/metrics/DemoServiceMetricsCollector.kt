@@ -54,6 +54,8 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
 
     lateinit var refunedDueToWrongTimePredictionOrder: Counter
     lateinit var expiredDeliveryOrder: Counter
+    lateinit var successDelivery: Counter
+    lateinit var failedDelivery: Counter
 
     @Autowired
     fun setMetrics(meterRegistry: MeterRegistry) {
@@ -120,6 +122,8 @@ class DemoServiceMetricsCollector(serviceName: String): CommonMetricsCollector(s
         refunedDueToWrongTimePredictionOrder = meterRegistry.counter("refuned_due_to_wrong_time_prediction_order", listOf(Tag.of("serviceName","p07")))
         //Количество денег, возвращенных пользователю
         refundedMoneyAmountDeliveryFailedCounter = meterRegistry.counter("refunded_money_amount", listOf(Tag.of("refundReason", "DELIVERY_FAILED")))
+        successDelivery = meterRegistry.counter("success_delivery_counter", listOf(Tag.of("serviceName","p07")))
+        failedDelivery = meterRegistry.counter("failed_delivery_counter", listOf(Tag.of("serviceName","p07")))
 
         ordersInStatusCollecting = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "collecting")), AtomicInteger())!!
         ordersInStatusDiscard = meterRegistry.gauge("orders_in_status", listOf(Tag.of("order_status", "discard")), AtomicInteger())!!
