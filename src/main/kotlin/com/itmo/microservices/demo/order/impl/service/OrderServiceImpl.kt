@@ -5,6 +5,7 @@ import com.itmo.microservices.commonlib.annotations.InjectEventLogger
 import com.itmo.microservices.commonlib.logging.EventLogger
 import com.itmo.microservices.demo.common.exception.NotFoundException
 import com.itmo.microservices.demo.common.metrics.DemoServiceMetricsCollector
+import com.itmo.microservices.demo.delivery.impl.service.DefaultDeliveryService
 import com.itmo.microservices.demo.order.api.messaging.*
 import com.itmo.microservices.demo.order.api.model.BookingDto
 import com.itmo.microservices.demo.order.api.model.OrderDto
@@ -41,6 +42,9 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
 
     @Autowired
     private lateinit var metricsCollector: DemoServiceMetricsCollector
+
+    @Autowired
+    private lateinit var deliveryService: DefaultDeliveryService
 
    override fun createOrder(user: UserDetails): OrderDto {
        val order = OrderEntity(
@@ -143,6 +147,8 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
             OrderServiceNotableEvents.I_ORDER_DATED,
             order
         )
+
+         deliveryService.delivery(order.toModel())
 
         metricsCollector.timeslotSetCounter.increment()
         return BookingDto(UUID.randomUUID(), setOf())

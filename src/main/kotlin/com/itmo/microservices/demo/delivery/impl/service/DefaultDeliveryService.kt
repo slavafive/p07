@@ -127,6 +127,7 @@ class DefaultDeliveryService(
 
 
     override fun delivery(order: OrderDto) {
+        log.info("a new delivery setted")
         metricsCollector.shippingOrdersTotalCounter.increment()
         delivery(order, 1)
     }
@@ -176,7 +177,7 @@ class DefaultDeliveryService(
                 val responseJson = JSONObject(response.body())
                 if (response.statusCode() == 200) {
                     log.info("delivery processing , maybe fail")
-                    Thread.sleep(120000)
+                    Thread.sleep(2000)
                     pollingForResult?.getDeliveryResult(order, responseJson, 1)
                 } else {
                     Thread.sleep(3000)
