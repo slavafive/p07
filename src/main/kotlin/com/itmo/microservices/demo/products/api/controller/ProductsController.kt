@@ -42,4 +42,18 @@ class ProductsController(private val productsService: ProductsService) {
     )
     fun addProduct(@RequestBody productRequest: ProductRequest): CatalogItemDto =
             productsService.addProduct(productRequest)
+
+
+    @PostMapping("/_internal/deleteAll")
+    @Operation(
+        summary = "Add product",
+        responses = [
+            ApiResponse(description = "OK", responseCode = "200"),
+            ApiResponse(description = "Bad request", responseCode = "400", content = [Content()])
+        ]
+    )
+    fun deleteAllProducts(): Unit =productsService.deleteAllProducts()
+
+
+
 }
