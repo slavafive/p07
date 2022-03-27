@@ -252,7 +252,7 @@ class PollingForResult(
                 log.info("getting response from 3th system")
                 if (responseJson_poll.getString("status") == "SUCCESS") {
                     log.info("delivery success")
-
+                    metricsCollector.successDelivery.increment()
                     val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
                     order.status = OrderStatus.COMPLETED
                     orderRepository.save(order)
@@ -270,6 +270,8 @@ class PollingForResult(
                     )
                 } else {
                     log.info("delivery fail")
+                    metricsCollector.failedDelivery.increment()
+
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
                     order.status = OrderStatus.REFUND
