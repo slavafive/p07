@@ -25,9 +25,11 @@ import com.itmo.microservices.demo.products.impl.service.DefaultProductsService
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.dao.EmptyResultDataAccessException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.stereotype.Service
+import java.lang.RuntimeException
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -62,8 +64,12 @@ class DefaultPaymentService(
                     + Thread.currentThread().getName()
         );
         val order = orderRepository.findByIdOrNull(orderId) ?: throw NotFoundException("Order $orderId not found")
+        require(order.status == OrderStatus.BOOKED) { throw RuntimeException("Order $orderId has not been finalized yet") }
+        require(order.itemsMap?.isNotEmpty() ?: false) { throw RuntimeException("Order $orderId is empty") }
         order.status = OrderStatus.PAID
-        metricsCollector.averagedBookingToPayTime.record(System.nanoTime() - order.timeUpdated!!, TimeUnit.NANOSECONDS)
+        order.timeUpdated?.run {
+            metricsCollector.averagedBookingToPayTime.record(System.nanoTime() - this, TimeUnit.NANOSECONDS)
+        }
         orderRepository.save(order)
         val amount = order.itemsMap?.entries?.sumOf {
             it.value.amount?.times(orderService.getOrderItemById(it.key).price!!) ?: 0

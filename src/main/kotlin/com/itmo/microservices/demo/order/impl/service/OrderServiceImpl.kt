@@ -26,6 +26,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.stereotype.Service
+import java.lang.RuntimeException
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -122,6 +123,7 @@ class OrderServiceImpl(private val orderRepository: OrderRepository,
             metricsCollector.finalizationAttemptFailedCounter.increment()
             throw NotFoundException("Order $orderId not found")
         }
+        require(order.itemsMap?.isNotEmpty() ?: false) { throw RuntimeException("Order $orderId is empty") }
         changeOrderStatus(orderId, OrderStatus.BOOKED)
         order.timeUpdated = System.nanoTime()
         orderRepository.save(order)
