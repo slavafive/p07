@@ -43,8 +43,8 @@ class OrderEntity {
 
     var deliveryDuration: Int? = null
 
-    @OneToMany
-    var paymentHistory: List<PaymentLogRecordEntity>? = null
+    @OneToMany(cascade= [CascadeType.ALL])
+    var paymentHistory: MutableList<PaymentLogRecordEntity>? = null
 
     constructor()
 
@@ -54,7 +54,7 @@ class OrderEntity {
         this.status = status
         this.itemsMap = itemsMap
         this.deliveryDuration = deliveryDuration
-        this.paymentHistory = paymentHistory
+        this.paymentHistory = mutableListOf()
     }
 
 

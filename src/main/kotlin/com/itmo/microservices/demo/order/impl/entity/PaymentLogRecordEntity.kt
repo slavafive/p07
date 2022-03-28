@@ -24,6 +24,4 @@ class PaymentLogRecordEntity {
         this.status = status
         this.amount = amount
     }
-
-
 }

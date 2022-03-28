@@ -6,7 +6,9 @@ import com.itmo.microservices.commonlib.logging.EventLogger
 import com.itmo.microservices.demo.common.exception.NotFoundException
 import com.itmo.microservices.demo.common.metrics.DemoServiceMetricsCollector
 import com.itmo.microservices.demo.order.api.model.OrderStatus
+import com.itmo.microservices.demo.order.api.model.PaymentStatus
 import com.itmo.microservices.demo.order.api.service.OrderService
+import com.itmo.microservices.demo.order.impl.entity.PaymentLogRecordEntity
 import com.itmo.microservices.demo.order.impl.repository.OrderRepository
 import com.itmo.microservices.demo.order.impl.service.OrderServiceImpl
 import com.itmo.microservices.demo.payments.api.model.FinancialOperationType
@@ -58,7 +60,7 @@ class DefaultPaymentService(
     @Autowired
     private lateinit var metricsCollector: DemoServiceMetricsCollector
 
-    override fun pay(orderId: UUID): PaymentSubmissionDto {
+    override fun pay(orderId: UUID): PaymentSubmissionDto? {
         println(
             "Pay method. "
                     + Thread.currentThread().getName()
@@ -85,18 +87,29 @@ class DefaultPaymentService(
         )
         userAccountFinancialLogRecordRepository.save(record)
 
-        val transactionResponse = transactionRequestService.postRequest()
-        val paymentSubmission = PaymentSubmissionDto(transactionResponse?.id, Date().time)
-        eventBus.post(paymentSubmission)
-        eventLogger.info(
-            PaymentServiceNotableEvents.I_ORDER_PAID,
-            paymentSubmission
-        )
-        CompletableFuture.supplyAsync(Supplier {
-            transactionResponse.let { transactionRequestService.poll(it?.id ?: UUID.randomUUID()) }
-        })
+        try {
+            val transactionResponse = transactionRequestService.postRequest()
+            val paymentSubmission = PaymentSubmissionDto(transactionResponse?.id, Date().time)
+            val successPaymentLogRecordEntity = PaymentLogRecordEntity(Date().time, PaymentStatus.SUCCESS, order.itemsMap?.values?.sumOf { it.amount ?: 0 })
+            order.paymentHistory?.add(successPaymentLogRecordEntity)
+            orderRepository.save(order)
+            eventBus.post(paymentSubmission)
+            eventLogger.info(
+                PaymentServiceNotableEvents.I_ORDER_PAID,
+                paymentSubmission
+            )
+            CompletableFuture.supplyAsync(Supplier {
+                transactionResponse.let { transactionRequestService.poll(it?.id ?: UUID.randomUUID()) }
+            })
 
-        return paymentSubmission
+            return paymentSubmission
+        } catch (e: Exception) {
+
+            val failedPaymentLogRecordEntity = PaymentLogRecordEntity(Date().time, PaymentStatus.SUCCESS, order.itemsMap?.values?.sumOf { it.amount ?: 0 })
+            order.paymentHistory?.add(failedPaymentLogRecordEntity)
+            orderRepository.save(order)
+            return null
+        }
     }
 
     override fun finlog(orderId: UUID?, author: UserDetails): List<UserAccountFinancialLogRecordDto> {
