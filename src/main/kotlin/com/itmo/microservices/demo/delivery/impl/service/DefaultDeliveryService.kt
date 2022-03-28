@@ -158,7 +158,7 @@ class DefaultDeliveryService(
                 metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
             }
             metricsCollector.expiredDeliveryOrder.increment()
-
+            metricsCollector.failedDelivery.increment()
             //?
             metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
 
