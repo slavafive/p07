@@ -9,7 +9,7 @@ import org.springframework.security.core.userdetails.UserDetails
 import java.util.*
 
 interface PaymentService {
-    fun pay(orderId: UUID): PaymentSubmissionDto
+    fun pay(orderId: UUID): PaymentSubmissionDto?
     fun finlog(orderId: UUID?, author: UserDetails): List<UserAccountFinancialLogRecordDto>
     fun getTransactions(): List<Transaction>
 }
