@@ -88,7 +88,7 @@ class DefaultDeliveryService(
             .uri(URI.create("$url/transactions"))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
-            .timeout(java.time.Duration.ofSeconds(5))
+            .timeout(java.time.Duration.ofSeconds(50))
             .build()
     }
 
@@ -146,11 +146,9 @@ class DefaultDeliveryService(
     }
 
     override fun delivery(orderDto: OrderDto, times: Int) {
-        if (orderDto.deliveryDuration!! < this.timer.get_time()) {
-            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+orderDto.deliveryDuration)
-            if(times == 1){
-                //never used external system
-                //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
+        if (orderDto.deliveryDuration!! < this.timer.get_time() || times >=5) {
+            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+orderDto.deliveryDuration+"OR tried too many times")
+            if(orderDto.deliveryDuration!! < this.timer.get_time()){
                 metricsCollector.refunedDueToWrongTimePredictionOrder.increment()
             }
             metricsCollector.expiredDeliveryOrder.increment()
@@ -196,7 +194,7 @@ class DefaultDeliveryService(
                 delivery(orderDto,times+1)
                 return
             }
-            orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
+
         }
     }
 }
@@ -207,6 +205,7 @@ class PollingForResult(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
     private val metricsCollector: DemoServiceMetricsCollector,
     private val orderRepository: OrderRepository,
+    private val eventBus: EventBus,
     private val productsRepository: ProductsRepository
 ) {
     private val postToken = mapOf("clientSecret" to "8ddfb4e8-7f83-4c33-b7ac-8504f7c99205")
@@ -219,7 +218,7 @@ class PollingForResult(
         return HttpRequest.newBuilder()
             .uri(URI.create("$url/transactions/$id"))
             .header("Content-Type", "application/json")
-            .timeout(java.time.Duration.ofSeconds(5))
+            .timeout(java.time.Duration.ofSeconds(50))
             .build()
     }
 
@@ -249,6 +248,7 @@ class PollingForResult(
                         metricsCollector.successDelivery.increment()
                         val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
                         order.status = OrderStatus.COMPLETED
+                        orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
                         orderRepository.save(order)
 
                         metricsCollector.currentShippingOrdersGauge.decrementAndGet()
