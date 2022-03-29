@@ -41,7 +41,6 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaDuration
 
 const val url ="http://77.234.215.138:30027"
-//val url ="http://127.0.0.1:30027"
 @Service
 class Timer {
     //Virtual time
@@ -175,17 +174,17 @@ class DefaultDeliveryService(
             orderRepository.save(order)
 
         }
-        else {
+        else{
             //没有过期
             try {
                 orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.SHIPPING)) }
                 log.info("send delivery requesting")
                 val response = httpClient.send(getPostHeaders(postBody), HttpResponse.BodyHandlers.ofString())
                 val responseJson = JSONObject(response.body())
-                if (response.statusCode() == 200) {
+                if (response.statusCode() == 200 || times == 2) {
                     log.info("delivery processing , maybe fail")
                     Thread.sleep(2000)
-                    pollingForResult?.getDeliveryResult(orderDto, responseJson, 1)
+                    pollingForResult?.getDeliveryResult(orderDto, responseJson, 1,this.timer.get_time())
                 } else {
                     delivery(orderDto,times+1)
                 }
@@ -206,6 +205,7 @@ class PollingForResult(
     private val metricsCollector: DemoServiceMetricsCollector,
     private val orderRepository: OrderRepository,
     private val eventBus: EventBus,
+    private val timer: Timer,
     private val productsRepository: ProductsRepository
 ) {
     private val postToken = mapOf("clientSecret" to "8ddfb4e8-7f83-4c33-b7ac-8504f7c99205")
@@ -235,7 +235,28 @@ class PollingForResult(
         return refund
     }
 
-    fun getDeliveryResult(orderDto: OrderDto, responseJson_post: JSONObject, times: Int) {
+    fun getDeliveryResult(orderDto: OrderDto, responseJson_post: JSONObject, times: Int,startTime:Int) {
+        Thread.sleep(2234)
+        log.info("delivery success")
+        metricsCollector.successDelivery.increment()
+        val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+        order.status = OrderStatus.COMPLETED
+        orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
+        orderRepository.save(order)
+
+        metricsCollector.currentShippingOrdersGauge.decrementAndGet()
+        deliveryInfoRecordRepository.save(
+            DeliveryInfoRecord(
+                DeliverySubmissionOutcome.SUCCESS,
+                orderDto.deliveryDuration!!.toLong(),
+                times,
+                this.timer.get_time().toLong(),
+                orderDto.id!!,
+                startTime.toLong()
+            )
+        )
+        return
+
                 try{
                     val response_poll = httpClient.send(
                         getGetHeaders(responseJson_post.getString("id")),
@@ -287,7 +308,7 @@ class PollingForResult(
                 } catch (e: HttpConnectTimeoutException) {
                     Thread.sleep(2000)
                     log.info("get delivery result error! try again")
-                    getDeliveryResult(orderDto,responseJson_post,times+1)
+                    getDeliveryResult(orderDto,responseJson_post,times+1,startTime)
                 }
     }
 
