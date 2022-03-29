@@ -177,6 +177,12 @@ class DefaultDeliveryService(
         else{
             //没有过期
             try {
+                if(times==2){
+                    log.info("delivery processing , maybe fail")
+                    Thread.sleep(2000)
+                    pollingForResult?.getDeliveryResult(orderDto,JSONObject() , 1,this.timer.get_time())
+                    return
+                }
                 orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.SHIPPING)) }
                 log.info("send delivery requesting")
                 val response = httpClient.send(getPostHeaders(postBody), HttpResponse.BodyHandlers.ofString())
