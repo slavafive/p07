@@ -16,9 +16,7 @@ import com.itmo.microservices.demo.delivery.impl.utils.toModel
 import com.itmo.microservices.demo.notifications.impl.service.StubNotificationService
 import com.itmo.microservices.demo.order.api.model.OrderDto
 import com.itmo.microservices.demo.order.api.model.OrderStatus
-import com.itmo.microservices.demo.order.impl.entity.OrderEntity
 import com.itmo.microservices.demo.order.impl.repository.OrderRepository
-import com.itmo.microservices.demo.order.impl.util.toEntity
 import com.itmo.microservices.demo.products.impl.repository.ProductsRepository
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -26,7 +24,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.configurationprocessor.json.JSONObject
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.scheduling.annotation.EnableScheduling
-import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.http.HttpClient
@@ -42,6 +39,7 @@ import javax.annotation.PostConstruct
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaDuration
+
 const val url ="http://77.234.215.138:30027"
 //val url ="http://127.0.0.1:30027"
 @Service
@@ -82,8 +80,6 @@ class DefaultDeliveryService(
     private val objectMapper = ObjectMapper()
     private val postBody: String = objectMapper.writeValueAsString(postToken)
 
-    @OptIn(ExperimentalTime::class)
-    private val timeout = Duration.seconds(10).toJavaDuration()
     val httpClient: HttpClient = HttpClient.newBuilder().build()
 
 
@@ -209,7 +205,6 @@ class DefaultDeliveryService(
 @Service
 class PollingForResult(
     private val deliveryInfoRecordRepository: DeliveryInfoRecordRepository,
-    private val timer: Timer,
     private val metricsCollector: DemoServiceMetricsCollector,
     private val orderRepository: OrderRepository,
     private val productsRepository: ProductsRepository
@@ -218,14 +213,11 @@ class PollingForResult(
     private val objectMapper = ObjectMapper()
     private val postBody: String = objectMapper.writeValueAsString(postToken)
 
-    @OptIn(ExperimentalTime::class)
-    private val timeout = Duration.seconds(10).toJavaDuration()
     val httpClient: HttpClient = HttpClient.newBuilder().build()
 
     private fun getGetHeaders(id: String): HttpRequest {
         return HttpRequest.newBuilder()
             .uri(URI.create("$url/transactions/$id"))
-            .timeout(this.timeout)
             .header("Content-Type", "application/json")
             .timeout(java.time.Duration.ofSeconds(5))
             .build()
@@ -234,8 +226,6 @@ class PollingForResult(
     companion object {
         val log: Logger = LoggerFactory.getLogger(StubNotificationService::class.java)
     }
-
-    var schedulePool: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
 
     fun countRefundMoneyAmount(order: OrderDto): Double {
         var refund = 0.0
@@ -247,59 +237,58 @@ class PollingForResult(
     }
 
     fun getDeliveryResult(orderDto: OrderDto, responseJson_post: JSONObject, times: Int) {
-        if (times > 3) {
-            return
-        }
-        schedulePool.schedule(
-            {
-                val response_poll = httpClient.send(
-                    getGetHeaders(responseJson_post.getString("id")),
-                    HttpResponse.BodyHandlers.ofString()
-                )
-                val responseJson_poll = JSONObject(response_poll.body())
-                log.info("getting response from 3th system")
-                if (responseJson_poll.getString("status") == "SUCCESS") {
-                    log.info("delivery success")
-                    metricsCollector.successDelivery.increment()
-                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
-                    order.status = OrderStatus.COMPLETED
-                    orderRepository.save(order)
-
-                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
-                    deliveryInfoRecordRepository.save(
-                        DeliveryInfoRecord(
-                            DeliverySubmissionOutcome.SUCCESS,
-                            responseJson_poll.getLong("delta"),
-                            times,
-                            responseJson_poll.getLong("completedTime"),
-                            orderDto.id!!,
-                            responseJson_poll.getLong("submitTime")
-                        )
+                try{
+                    val response_poll = httpClient.send(
+                        getGetHeaders(responseJson_post.getString("id")),
+                        HttpResponse.BodyHandlers.ofString()
                     )
-                } else {
-                    log.info("delivery fail")
-                    metricsCollector.failedDelivery.increment()
-                    metricsCollector.currentShippingOrdersGauge.decrementAndGet()
-                    val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
-                    order.status = OrderStatus.REFUND
-                    orderRepository.save(order)
+                    val responseJson_poll = JSONObject(response_poll.body())
+                    log.info("getting response from 3th system")
+                    if (responseJson_poll.getString("status") == "SUCCESS") {
+                        log.info("delivery success")
+                        metricsCollector.successDelivery.increment()
+                        val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                        order.status = OrderStatus.COMPLETED
+                        orderRepository.save(order)
 
-                    deliveryInfoRecordRepository.save(
-                        DeliveryInfoRecord(
-                            DeliverySubmissionOutcome.FAILURE,
-                            responseJson_poll.getLong("delta"),
-                            times,
-                            responseJson_poll.getLong("completedTime"),
-                            orderDto.id!!,
-                            responseJson_poll.getLong("submitTime")
+                        metricsCollector.currentShippingOrdersGauge.decrementAndGet()
+                        deliveryInfoRecordRepository.save(
+                            DeliveryInfoRecord(
+                                DeliverySubmissionOutcome.SUCCESS,
+                                responseJson_poll.getLong("delta"),
+                                times,
+                                responseJson_poll.getLong("completedTime"),
+                                orderDto.id!!,
+                                responseJson_poll.getLong("submitTime")
+                            )
                         )
-                    )
-                    val refundMoneyAmount = countRefundMoneyAmount(orderDto)
-                    metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
+                    } else {
+                        log.info("delivery fail")
+                        metricsCollector.failedDelivery.increment()
+                        metricsCollector.currentShippingOrdersGauge.decrementAndGet()
+                        val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+                        order.status = OrderStatus.REFUND
+                        orderRepository.save(order)
+
+                        deliveryInfoRecordRepository.save(
+                            DeliveryInfoRecord(
+                                DeliverySubmissionOutcome.FAILURE,
+                                responseJson_poll.getLong("delta"),
+                                times,
+                                responseJson_poll.getLong("completedTime"),
+                                orderDto.id!!,
+                                responseJson_poll.getLong("submitTime")
+                            )
+                        )
+                        val refundMoneyAmount = countRefundMoneyAmount(orderDto)
+                        metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
+                    }
+
+                } catch (e: HttpConnectTimeoutException) {
+                    Thread.sleep(2000)
+                    log.info("get delivery result error! try again")
+                    getDeliveryResult(orderDto,responseJson_post,times+1)
                 }
-
-            }, (5).toLong(), TimeUnit.SECONDS
-        )
     }
 
 }
