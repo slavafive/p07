@@ -42,8 +42,8 @@ import javax.annotation.PostConstruct
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaDuration
-//val url ="http://77.234.215.138:30027"
-val url ="http://127.0.0.1:30027"
+const val url ="http://77.234.215.138:30027"
+//val url ="http://127.0.0.1:30027"
 @Service
 class Timer {
     //Virtual time
@@ -131,11 +131,12 @@ class DefaultDeliveryService(
 
 
     override fun delivery(orderDto: OrderDto) {
-        log.info("a new delivery setted")
+        log.info("a new delivery set")
         val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
         order.status = OrderStatus.SHIPPING
         orderRepository.save(order)
         metricsCollector.shippingOrdersTotalCounter.increment()
+        metricsCollector.currentShippingOrdersGauge.incrementAndGet() // when success or fail , dec 1
         delivery(orderDto, 1)
     }
 
@@ -148,10 +149,9 @@ class DefaultDeliveryService(
         return refund
     }
 
-    override fun delivery(order: OrderDto, times: Int) {
-        metricsCollector.currentShippingOrdersGauge.incrementAndGet() // when success or fail , dec 1
-        if (order.deliveryDuration!! < this.timer.get_time()) {
-            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+order.deliveryDuration)
+    override fun delivery(orderDto: OrderDto, times: Int) {
+        if (orderDto.deliveryDuration!! < this.timer.get_time()) {
+            log.info("a delivery EXPIRED : now is "+this.timer.get_time()+"but seleted was"+orderDto.deliveryDuration)
             if(times == 1){
                 //never used external system
                 //Количество заказов, которые перешли в возврат, поскольку ваша система предсказала неправильное время и время на доставку истекло еще до отправки во внешнюю систему
@@ -161,10 +161,9 @@ class DefaultDeliveryService(
             metricsCollector.failedDelivery.increment()
             //?
             metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
-
-            val refundMoneyAmount = countRefundMoneyAmount(order)
+            val refundMoneyAmount = countRefundMoneyAmount(orderDto)
             metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
-
+            metricsCollector.currentShippingOrdersGauge.decrementAndGet()
             val timeStamp = System.currentTimeMillis()
             deliveryInfoRecordRepository.save(
                 DeliveryInfoRecord(
@@ -172,30 +171,36 @@ class DefaultDeliveryService(
                     timeStamp,
                     1,
                     timeStamp,
-                    order.id!!,
+                    orderDto.id!!,
                     timeStamp
                 )
             )
-        } else {
+
+            val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
+            order.status = OrderStatus.REFUND
+            orderRepository.save(order)
+
+        }
+        else {
+            //没有过期
             try {
-                order.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.SHIPPING)) }
+                orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.SHIPPING)) }
                 log.info("send delivery requesting")
                 val response = httpClient.send(getPostHeaders(postBody), HttpResponse.BodyHandlers.ofString())
                 val responseJson = JSONObject(response.body())
                 if (response.statusCode() == 200) {
                     log.info("delivery processing , maybe fail")
-                    Thread.sleep(1000)
-                    pollingForResult?.getDeliveryResult(order, responseJson, 1)
+                    Thread.sleep(2000)
+                    pollingForResult?.getDeliveryResult(orderDto, responseJson, 1)
                 } else {
-                    Thread.sleep(1000)
-                    delivery(order,times+1)
+                    delivery(orderDto,times+1)
                 }
             } catch (e: HttpConnectTimeoutException) {
-                log.info("Request timeout!")
-                delivery(order,times+1)
+                log.info("Request timeout!--${times} time(s)")
+                delivery(orderDto,times+1)
                 return
             }
-            order.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
+            orderDto.id?.let { eventBus.post(OrderStatusChanged(it, OrderStatus.COMPLETED)) }
         }
     }
 }
@@ -274,7 +279,6 @@ class PollingForResult(
                 } else {
                     log.info("delivery fail")
                     metricsCollector.failedDelivery.increment()
-
                     metricsCollector.currentShippingOrdersGauge.decrementAndGet()
                     val order = orderRepository.findByIdOrNull(orderDto.id) ?: throw NotFoundException("Order ${orderDto.id} not found")
                     order.status = OrderStatus.REFUND
@@ -294,7 +298,7 @@ class PollingForResult(
                     metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
                 }
 
-            }, (10).toLong(), TimeUnit.SECONDS
+            }, (5).toLong(), TimeUnit.SECONDS
         )
     }
 
