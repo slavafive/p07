@@ -39,7 +39,7 @@ class OrderController(private var orderService: OrderService) {
     fun createOrder(@Parameter(hidden = true) @AuthenticationPrincipal author: UserDetails) =
         orderService.createOrder(author)
 
-    @PostMapping("/{orderId}/items/{itemId}")
+    @PutMapping("/{orderId}/items/{itemId}")
     @Operation(
             summary = "Добавление товара в корзину",
             responses = [
