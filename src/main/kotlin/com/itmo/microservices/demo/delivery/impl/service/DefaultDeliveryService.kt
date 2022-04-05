@@ -87,7 +87,7 @@ class DefaultDeliveryService(
             .uri(URI.create("$url/transactions"))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
-            .timeout(java.time.Duration.ofSeconds(50))
+            .timeout(java.time.Duration.ofSeconds(20))
             .build()
     }
 
@@ -106,7 +106,7 @@ class DefaultDeliveryService(
 
     override fun getSlots(number: Int): List<Int> {
         var list = mutableListOf<Int>()
-        var startTime: Int = timer.get_time() + 30 + 3 * countOrdersWaitingForDeliver.get()
+        var startTime: Int = timer.get_time() + 130 + 3 * countOrdersWaitingForDeliver.get()
         for (i: Int in 1..number) {
             list.add(startTime)
             startTime += 3
@@ -153,7 +153,7 @@ class DefaultDeliveryService(
             metricsCollector.expiredDeliveryOrder.increment()
             metricsCollector.failedDelivery.increment()
             //?
-            metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
+            //metricsCollector.externalSystemExpenseDeliveryCounter.increment(50.0)// should be  the total price of the products in order // and also see definition
             val refundMoneyAmount = countRefundMoneyAmount(orderDto)
             metricsCollector.refundedMoneyAmountDeliveryFailedCounter.increment(refundMoneyAmount)
             metricsCollector.currentShippingOrdersGauge.decrementAndGet()
